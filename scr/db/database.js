@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-const db = SQLite.openDatabaseAsync('app.db');
+const db = SQLite.openDatabaseSync('app.db');
 
 export const initDB = () => {
     db.transaction(tx => {

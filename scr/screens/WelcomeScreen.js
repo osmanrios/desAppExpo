@@ -34,6 +34,7 @@ const styles = StyleSheet.create({
         marginBottom: 20
     },
     logi: {
+        marginBottom: 30,
         fontWeight: 'bold',
         alignItems: 'center', // Asegura que el contenido esté centrado
       

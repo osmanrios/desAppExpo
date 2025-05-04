@@ -2,21 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
+import * as Location from 'expo-location';
 
 export default function App() {
   const [currentWeather, setCurrentWeather] = useState(null);
   const [forecast, setForecast] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [location, setLocation] = useState(null);
 
   const API_KEY = '7949c55380404d677bfd6ba7752331d5'; 
-  const CITY = 'Sincelejo,CO';
 
   // Obtener clima actual
   const fetchCurrentWeather = async () => {
     try {
       const response = await axios.get(
-        `https://api.openweathermap.org/data/2.5/weather?q=${CITY}&appid=${API_KEY}&units=metric`
+        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
       );
       setCurrentWeather(response.data);
     } catch (err) {
@@ -27,10 +28,10 @@ export default function App() {
   };
 
   // Obtener pronóstico extendido
-  const fetchForecast = async () => {
+  const fetchForecast = async (lat, lon) => {
     try {
       const response = await axios.get(
-        `https://api.openweathermap.org/data/2.5/forecast?q=${CITY}&appid=${API_KEY}&units=metric`
+        `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
       );
       const dailyData = response.data.list.filter((item) =>
         item.dt_txt.includes('12:00:00')
@@ -43,21 +44,41 @@ export default function App() {
     }
   };
 
+  // Obtener ubicación del usuario
+  const getLocation = async () => {
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      setError('Permiso de ubicación denegado');
+      setLoading(false);
+      return;
+    }
+
+    let location = await Location.getCurrentPositionAsync({});
+    setLocation(location.coords);
+  };
+
   // Cargar datos al iniciar
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       setError(null);
       try {
-        await Promise.all([fetchCurrentWeather(), fetchForecast()]);
+        await getLocation(); // Obtener la ubicación antes de cargar el clima
       } catch (err) {
-        setError('Error al cargar los datos. Intenta de nuevo más tarde.');
+        setError('Error al cargar la ubicación. Intenta de nuevo más tarde.');
       } finally {
         setLoading(false);
       }
     };
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (location) {
+      fetchCurrentWeather(location.latitude, location.longitude);
+      fetchForecast(location.latitude, location.longitude);
+    }
+  }, [location]);
 
   if (loading) {
     return (
@@ -88,9 +109,9 @@ export default function App() {
       </View>
 
       <View style={styles.currentWeather}>
-        <Text style={styles.location}>{currentWeather?.name.toUpperCase()}-SUCRE</Text>
+        <Text style={styles.location}>{currentWeather?.name.toUpperCase()}</Text>
         <Text style={styles.temperature}>
-          {Math.round(currentWeather?.main.temp)}°
+          {Math.round(currentWeather?.main.temp)}°C
         </Text>
         <Text style={styles.description}>
           {currentWeather?.weather[0].description.toUpperCase()}
@@ -120,13 +141,13 @@ export default function App() {
         </View>
       </View>
 
-        <View style={styles.buttons}>
-          <TouchableOpacity style={styles.button}>
-            <Ionicons name="search-outline" size={20} color="white" />
-            <Text style={styles.buttonText}>BUSCAR UBICACIÓN</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.buttons}>
+        <TouchableOpacity style={styles.button}>
+          <Ionicons name="search-outline" size={20} color="white" />
+          <Text style={styles.buttonText}>BUSCAR UBICACIÓN</Text>
+        </TouchableOpacity>
       </View>
+    </View>
   );
 }
 
@@ -242,8 +263,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: 'white',
-    fontSize: 16,
-    marginTop: 10,
-  },
+    color:'white',
+fontSize: 16,
+marginTop: 10,
+},
 });
