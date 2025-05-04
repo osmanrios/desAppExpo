@@ -47,6 +47,7 @@ const styles = StyleSheet.create({
         height: 300, // Ajusta la altura
     },
     reg: {
+        margin: 20,
         fontWeight: 'bold',
         alignItems: 'center',      
     },
