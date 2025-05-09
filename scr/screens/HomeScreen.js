@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, TextInput, Keyboard, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import * as Location from 'expo-location';
@@ -10,11 +10,10 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [location, setLocation] = useState(null);
+  const [city, setCity] = useState('');
+  const API_KEY = '7949c55380404d677bfd6ba7752331d5';
 
-  const API_KEY = '7949c55380404d677bfd6ba7752331d5'; 
-
-  // Obtener clima actual
-  const fetchCurrentWeather = async () => {
+  const fetchCurrentWeather = async (lat, lon) => {
     try {
       const response = await axios.get(
         `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
@@ -23,11 +22,9 @@ export default function App() {
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message;
       setError(`Error al obtener el clima actual: ${errorMessage}`);
-      console.error('Error en clima actual:', errorMessage);
     }
   };
 
-  // Obtener pronóstico extendido
   const fetchForecast = async (lat, lon) => {
     try {
       const response = await axios.get(
@@ -40,45 +37,55 @@ export default function App() {
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message;
       setError(`Error al obtener el pronóstico: ${errorMessage}`);
-      console.error('Error en pronóstico:', errorMessage);
     }
   };
 
-  // Obtener ubicación del usuario
-  const getLocation = async () => {
-    let { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      setError('Permiso de ubicación denegado');
-      setLoading(false);
-      return;
-    }
-
-    let location = await Location.getCurrentPositionAsync({});
-    setLocation(location.coords);
-  };
-
-  // Cargar datos al iniciar
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        await getLocation(); // Obtener la ubicación antes de cargar el clima
-      } catch (err) {
-        setError('Error al cargar la ubicación. Intenta de nuevo más tarde.');
-      } finally {
+  const fetchWeatherByLocation = async () => {
+    setLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Permiso de ubicación denegado');
         setLoading(false);
+        return;
       }
-    };
-    loadData();
-  }, []);
+
+      const location = await Location.getCurrentPositionAsync({});
+      setLocation(location.coords);
+      await fetchCurrentWeather(location.coords.latitude, location.coords.longitude);
+      await fetchForecast(location.coords.latitude, location.coords.longitude);
+      setError(null);
+    } catch (err) {
+      setError('Error al obtener la ubicación');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchWeatherByCity = async () => {
+    if (!city.trim()) return;
+    Keyboard.dismiss();
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get(
+        `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${API_KEY}&units=metric`
+      );
+      const data = response.data;
+      setCurrentWeather(data);
+      setLocation(null); // para indicar que estamos usando búsqueda manual
+      await fetchForecast(data.coord.lat, data.coord.lon);
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || err.message;
+      setError(`Ciudad no encontrada: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (location) {
-      fetchCurrentWeather(location.latitude, location.longitude);
-      fetchForecast(location.latitude, location.longitude);
-    }
-  }, [location]);
+    fetchWeatherByLocation();
+  }, []);
 
   if (loading) {
     return (
@@ -93,7 +100,7 @@ export default function App() {
     return (
       <View style={styles.container}>
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => loadData()}>
+        <TouchableOpacity style={styles.button} onPress={fetchWeatherByLocation}>
           <Text style={styles.buttonText}>Reintentar</Text>
         </TouchableOpacity>
       </View>
@@ -109,19 +116,19 @@ export default function App() {
       </View>
 
       <View style={styles.currentWeather}>
-        <Text style={styles.location}>{currentWeather?.name.toUpperCase()}</Text>
+        <Text style={styles.location}>{currentWeather?.name?.toUpperCase()}</Text>
         <Text style={styles.temperature}>
-          {Math.round(currentWeather?.main.temp)}°C
+          {Math.round(currentWeather?.main?.temp)}°C
         </Text>
         <Text style={styles.description}>
-          {currentWeather?.weather[0].description.toUpperCase()}
+          {currentWeather?.weather[0]?.description.toUpperCase()}
         </Text>
         <View style={styles.details}>
           <Text style={styles.detailText}>
-            HUMEDAD {Math.round(currentWeather?.main.humidity)}%
+            HUMEDAD {Math.round(currentWeather?.main?.humidity)}%
           </Text>
           <Text style={styles.detailText}>
-            VIENTO {Math.round(currentWeather?.wind.speed * 3.6)} km/h
+            VIENTO {Math.round(currentWeather?.wind?.speed * 3.6)} km/h
           </Text>
         </View>
         <Text style={styles.source}>Condiciones Climáticas Usando OpenWeatherMap</Text>
@@ -133,8 +140,17 @@ export default function App() {
           {forecast.map((day, index) => (
             <View key={index} style={styles.forecastDay}>
               <Text style={styles.dayText}>
-                {new Date(day.dt * 1000).toLocaleDateString('es-ES', { weekday: 'short' }).toUpperCase()}
+                {new Date(day.dt * 1000).toLocaleDateString('es-ES', {
+                  weekday: 'short'
+                }).toUpperCase()}
               </Text>
+              {/* Mostrar el ícono de clima de OpenWeatherMap */}
+              <Image
+                source={{
+                  uri: `https://openweathermap.org/img/wn/${day.weather[0].icon}@2x.png`
+                }}
+                style={styles.weatherIcon}
+              />
               <Text style={styles.tempText}>{Math.round(day.main.temp)}°</Text>
             </View>
           ))}
@@ -142,9 +158,21 @@ export default function App() {
       </View>
 
       <View style={styles.buttons}>
-        <TouchableOpacity style={styles.button}>
+        <TextInput
+          style={styles.input}
+          placeholder="Buscar ciudad..."
+          placeholderTextColor="white"
+          value={city}
+          onChangeText={setCity}
+          onSubmitEditing={fetchWeatherByCity}
+        />
+        <TouchableOpacity style={styles.button} onPress={fetchWeatherByCity}>
           <Ionicons name="search-outline" size={20} color="white" />
           <Text style={styles.buttonText}>BUSCAR UBICACIÓN</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={fetchWeatherByLocation}>
+          <Ionicons name="locate-outline" size={20} color="white" />
+          <Text style={styles.buttonText}>USAR MI UBICACIÓN</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -155,86 +183,99 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'rgb(9, 178, 181)',
-    padding: 20,
+    padding: 20
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 20
   },
   headerText: {
     color: 'white',
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: 'bold'
   },
   currentWeather: {
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     padding: 20,
     borderRadius: 10,
-    marginBottom: 20,
+    marginBottom: 20
   },
   location: {
     color: 'white',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: 'bold'
   },
   temperature: {
     color: 'white',
     fontSize: 64,
-    fontWeight: 'bold',
+    fontWeight: 'bold'
   },
   description: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 16
   },
   details: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '60%',
-    marginVertical: 10,
+    marginVertical: 10
   },
   detailText: {
     color: 'white',
-    fontSize: 14,
+    fontSize: 14
   },
   source: {
     color: 'white',
     fontSize: 12,
-    opacity: 0.8,
+    opacity: 0.8
   },
   forecast: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     padding: 20,
     borderRadius: 10,
-    marginBottom: 20,
+    marginBottom: 20
   },
   sectionTitle: {
     color: 'white',
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 10
   },
   forecastRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between'
   },
   forecastDay: {
-    alignItems: 'center',
+    alignItems: 'center'
   },
   dayText: {
     color: 'white',
-    fontSize: 14,
+    fontSize: 14
   },
   tempText: {
     color: 'white',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: 'bold'
+  },
+  weatherIcon: {
+    width: 50,
+    height: 50,
+    marginVertical: 5
   },
   buttons: {
-    marginBottom: 20,
-    alignItems: 'center',
+    alignItems: 'center'
+  },
+  input: {
+    width: '100%',
+    borderColor: 'white',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    color: 'white',
+    marginBottom: 10
   },
   button: {
     flexDirection: 'row',
@@ -243,28 +284,24 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '80%',
+    width: '100%',
+    marginBottom: 10
   },
   buttonText: {
     color: 'white',
     fontSize: 16,
-    marginLeft: 10,
+    marginLeft: 10
   },
   errorText: {
     color: 'white',
     fontSize: 18,
     textAlign: 'center',
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
+    marginBottom: 20
   },
   loadingText: {
-    color:'white',
-fontSize: 16,
-marginTop: 10,
-},
+    color: 'white',
+    fontSize: 16,
+    marginTop: 10
+  }
 });
+
